@@ -61,6 +61,14 @@ struct as_is
     template<class M>
     using type = type<M>;
 };
+    
+//-------------------------
+    template<template<class> class S>
+    constexpr bool is_schema_test(S<as_is> *) {return true;}
+    constexpr bool is_schema_test(...) {return false;}
+
+    template<class S>
+    constexpr bool is_schema = is_schema_test(null<S>);
 
 //-------------------------
 template<template<class F> class SC>
