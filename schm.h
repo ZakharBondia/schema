@@ -105,7 +105,7 @@ template<class T>
 using former = typename T::former;
 
 template<class S, class R, class F>
-auto tranform(F /*f*/) -> members<S, R>
+auto tranform(const F &/*f*/) -> members<S, R>
 {
     return bit_cast<members<S, R>>(reform<S, former<make_transfomer<R, F>>>{});
 }
@@ -119,8 +119,8 @@ struct _##NAME \
     using parent = _self; \
     using type = TYPE; \
     static constexpr const char *name = #NAME; \
-    static type &access(parent& p) { return p.NAME; } \
-    static type const& access(parent const& p) { return p.NAME; } \
+    static constexpr type &access(parent& p) { return p.NAME; } \
+    static constexpr const type & access(const parent & p) { return p.NAME; } \
 }; \
 
 //-------------------------
@@ -131,7 +131,7 @@ struct _##NAME \
     using NAME = _##NAME<schm::as_is>; \
 \
     template<class F> \
-    struct _##NAME{ using _self = _##NAME;\
+    struct _##NAME{ using _self = _##NAME<schm::as_is>;\
 
 #define SCHM_MEM(T, NAME) SCHM_REF(T, NAME) typename F:: template type<_##NAME> NAME;
 #define SCHM_END };
