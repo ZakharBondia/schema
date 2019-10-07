@@ -115,7 +115,7 @@ using former = typename T::former;
 template<class S, class R, class F>
 auto tranform(const F &/*f*/) -> members<S, R>
 {
-    return bit_cast<members<S, R>>(reform<S, former<make_transfomer<R, F>>>{});
+    return ::schm::bit_cast<members<S, R>>(reform<S, former<make_transfomer<R, F>>>{});
 }
 //-------------------------
 
