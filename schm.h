@@ -53,7 +53,11 @@ constexpr auto name() -> const char *
 struct as_bool
 {
     template<class M>
-    using type = bool;
+    struct type
+    {
+        type(...) {}
+        bool value;
+    };
 };
 
 struct as_is
@@ -61,14 +65,20 @@ struct as_is
     template<class M>
     using type = type<M>;
 };
-    
-//-------------------------
-    template<template<class> class S>
-    constexpr bool is_schema_test(S<as_is> *) {return true;}
-    constexpr bool is_schema_test(...) {return false;}
 
-    template<class S>
-    constexpr bool is_schema = is_schema_test(null<S>);
+//-------------------------
+template<template<class> class S>
+constexpr bool is_schema_test(S<as_is> *)
+{
+    return true;
+}
+constexpr bool is_schema_test(...)
+{
+    return false;
+}
+
+template<class S>
+constexpr bool is_schema = is_schema_test(null<S>);
 
 //-------------------------
 template<template<class F> class SC>
@@ -105,6 +115,7 @@ struct make_transfomer
         template<class M>
         struct type
         {
+            type(...) {}
             R v{F{}(M{})};
         };
     };
@@ -113,23 +124,28 @@ template<class T>
 using former = typename T::former;
 
 template<class S, class R, class F>
-auto tranform(const F &/*f*/) -> members<S, R>
+auto transform(const F & /*f*/) -> members<S, R>
 {
     return ::schm::bit_cast<members<S, R>>(reform<S, former<make_transfomer<R, F>>>{});
+}
+template<template<class> class F, class S>
+auto transform(const F<S> &f)
+{
+    return transform<S, typename F<S>::result>(f);
 }
 //-------------------------
 
 } // namespace schm
 
 #define SCHM_REF(TYPE, NAME) \
-struct _##NAME \
-{ \
-    using parent = _self; \
-    using type = TYPE; \
-    static constexpr const char *name = #NAME; \
-    static constexpr type &access(parent& p) { return p.NAME; } \
-    static constexpr const type & access(const parent & p) { return p.NAME; } \
-}; \
+    struct _##NAME \
+    { \
+        using parent = _self; \
+        using type = TYPE; \
+        static constexpr const char *name = #NAME; \
+        static constexpr type &access(parent &p) { return p.NAME; } \
+        static constexpr const type &access(const parent &p) { return p.NAME; } \
+    };
 
 //-------------------------
 #define SCHM_BEG(NAME) \
@@ -139,7 +155,93 @@ struct _##NAME \
     using NAME = _##NAME<schm::as_is>; \
 \
     template<class F> \
-    struct _##NAME{ using _self = _##NAME<schm::as_is>;\
+    struct _##NAME \
+    { \
+        using _self = _##NAME<schm::as_is>;
 
-#define SCHM_MEM(T, NAME) SCHM_REF(T, NAME) typename F:: template type<_##NAME> NAME;
-#define SCHM_END };
+#define SCHM_MEM(T, NAME, V) SCHM_REF(T, NAME) typename F::template type<_##NAME> NAME{V};
+#define SCHM_END \
+    };
+
+//-------------------------
+
+namespace schm
+{
+
+template<class S>
+struct comparer
+{
+    using result = bool (*)(const S &, const S &);
+    template<class M>
+    result operator()(const M &)
+    {
+        return [](const S &lhs, const S &rhs) { return access<M>(lhs) == access<M>(rhs); };
+    }
+
+    auto process(members<S, result> comparers, const S &lhs, const S &rhs)
+    {
+        for (auto &f : comparers) {
+            if (!f(lhs, rhs))
+                return false;
+        }
+    }
+};
+
+template<class S, typename = std::enable_if_t<schm::is_schema<S>>>
+bool operator==(const S &lhs, const S &rhs)
+{
+    auto comparers = schm::transform(comparer<S>{});
+    for (auto &f : comparers) {
+        if (!f(lhs, rhs))
+            return false;
+    }
+    return true;
+}
+
+template<class S, typename = std::enable_if_t<schm::is_schema<S>>>
+bool operator!=(const S &lhs, const S &rhs)
+{
+    return !(lhs == rhs);
+}
+
+}
+
+//-------------------------
+
+namespace std
+{
+template<template<class> class SC>
+struct hash<SC<schm::as_is>>
+{
+    using argument_type = SC<schm::as_is>;
+    using result_type = std::size_t;
+
+    result_type operator()(const argument_type &s) const noexcept
+    {
+        auto hashers = schm::transform(hasher<argument_type>{});
+
+        result_type hash{};
+        for (auto &f : hashers)
+        {
+            f(hash, s);
+        }
+        return hash;
+    }
+
+    template<class S>
+    struct hasher
+    {
+        using result = void (*)(std::size_t &, const S &);
+        template<class M>
+        result operator()(const M &)
+        {
+            return [](std::size_t &seed, const S &s) {
+                //https://www.nullptr.me/2018/01/15/hashing-stdpair-and-stdtuple/
+                std::hash<schm::type<M>> hasher;
+                seed ^= hasher(schm::access<M>(s)) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            };
+        }
+    };
+};
+
+} // namespace std
