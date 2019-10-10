@@ -173,22 +173,14 @@ struct comparer
 {
     using result = bool (*)(const S &, const S &);
     template<class M>
-    result operator()(const M &)
+    constexpr result operator()(const M &)
     {
         return [](const S &lhs, const S &rhs) { return access<M>(lhs) == access<M>(rhs); };
-    }
-
-    auto process(members<S, result> comparers, const S &lhs, const S &rhs)
-    {
-        for (auto &f : comparers) {
-            if (!f(lhs, rhs))
-                return false;
-        }
     }
 };
 
 template<class S, typename = std::enable_if_t<schm::is_schema<S>>>
-bool operator==(const S &lhs, const S &rhs)
+constexpr bool operator==(const S &lhs, const S &rhs)
 {
     auto comparers = schm::transform(comparer<S>{});
     for (auto &f : comparers) {
@@ -199,9 +191,31 @@ bool operator==(const S &lhs, const S &rhs)
 }
 
 template<class S, typename = std::enable_if_t<schm::is_schema<S>>>
-bool operator!=(const S &lhs, const S &rhs)
+constexpr bool operator!=(const S &lhs, const S &rhs)
 {
     return !(lhs == rhs);
+}
+
+template<class S>
+struct lower_comparer
+{
+    using result = bool (*)(const S &, const S &);
+    template<class M>
+    constexpr result operator()(const M &)
+    {
+        return [](const S &lhs, const S &rhs) { return access<M>(lhs) < access<M>(rhs); };
+    }
+};
+
+template<class S, typename = std::enable_if_t<schm::is_schema<S>>>
+constexpr bool operator<(const S &lhs, const S &rhs)
+{
+    auto comparers = schm::transform(lower_comparer<S>{});
+    for (auto &f : comparers) {
+        if (!f(lhs, rhs))
+            return false;
+    }
+    return true;
 }
 
 }
@@ -216,7 +230,7 @@ struct hash<SC<schm::as_is>>
     using argument_type = SC<schm::as_is>;
     using result_type = std::size_t;
 
-    result_type operator()(const argument_type &s) const noexcept
+    constexpr result_type operator()(const argument_type &s) const noexcept
     {
         auto hashers = schm::transform(hasher<argument_type>{});
 
@@ -233,7 +247,7 @@ struct hash<SC<schm::as_is>>
     {
         using result = void (*)(std::size_t &, const S &);
         template<class M>
-        result operator()(const M &)
+        constexpr result operator()(const M &)
         {
             return [](std::size_t &seed, const S &s) {
                 //https://www.nullptr.me/2018/01/15/hashing-stdpair-and-stdtuple/
